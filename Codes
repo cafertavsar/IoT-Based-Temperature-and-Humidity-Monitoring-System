@@ -1,0 +1,76 @@
+#include <WiFi.h>
+#include <DHT.h>
+#include "ThingSpeak.h"
+
+// DHT sensör pin ve tip ayarları
+#define DHTPIN 4        // DHT sensörü veri pini (GPIO4)
+#define DHTTYPE DHT11   // Sensör tipi: DHT11 veya DHT22
+
+// WiFi bilgileri
+const char* ssid = "WiFi_ADIN";           // WiFi ağ adı
+const char* password = "WiFi_SIFRE";      // WiFi şifresi
+
+// ThingSpeak bilgileri
+unsigned long myChannelNumber = 1234567;  // ThingSpeak kanal numarası
+const char* myWriteAPIKey = "API_KEYINIZ";
+
+WiFiClient client;
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(115200); // Seri haberleşme başlatılıyor
+  dht.begin();          // DHT sensörü başlatılıyor
+
+  // WiFi'ye bağlanma işlemi
+  Serial.print("WiFi'ye bağlanılıyor...");
+  WiFi.begin(ssid, password);
+
+  unsigned long startAttemptTime = millis(); // Bağlantı için zaman aşımı kontrolü başlatılıyor
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 30000) { // Maksimum 30 saniye bekleniyor
+    delay(1000);
+    Serial.print(".");
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi'ye bağlanıldı."); // Bağlantı başarılı
+  } else {
+    Serial.println("\nWiFi bağlantısı başarısız! Lütfen bilgileri kontrol edin."); // Bağlantı başarısız
+    while (true); // Bağlantı yoksa sonsuz döngüye giriliyor
+  }
+
+  ThingSpeak.begin(client); // ThingSpeak başlatılıyor
+}
+
+void loop() {
+  // DHT sensöründen sıcaklık ve nem bilgisi okunuyor
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+
+  // Sensör verilerinin doğruluğu kontrol ediliyor
+  if (isnan(temp) || isnan(hum)) {
+    Serial.println("Sensör verisi okunamadı! Lütfen sensörü kontrol edin.");
+    delay(5000); // Eğer sensör verisi alınamazsa 5 saniye bekleniyor
+    return;
+  }
+
+  // Okunan veriler ekrana yazdırılıyor
+  Serial.print("Sıcaklık: ");
+  Serial.print(temp);
+  Serial.print(" °C | Nem: ");
+  Serial.print(hum);
+  Serial.println(" %");
+
+  // ThingSpeak'e veri gönderiliyor
+  ThingSpeak.setField(1, temp); // 1. alan: sıcaklık bilgisi
+  ThingSpeak.setField(2, hum);  // 2. alan: nem bilgisi
+  
+  int status = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey); // Veriler ThingSpeak'e gönderiliyor
+  if (status == 200) {
+    Serial.println("ThingSpeak'e veri gönderildi.");
+  } else {
+    Serial.print("Veri gönderme hatası: ");
+    Serial.println(status);
+  }
+
+  delay(15000); // Her 15 saniyede bir veri gönderimi yapılıyor
+}
